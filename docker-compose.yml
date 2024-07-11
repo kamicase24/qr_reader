@@ -1,0 +1,18 @@
+version: '3'
+services:
+  api:
+    build: 
+      context: .
+      dockerfile: ./compose/Dockerfile
+    container_name: koverco
+    # command: sh -c ". venv/bin/activate && flask run --host=0.0.0.0"
+    command: flask run --debug --host=0.0.0.0
+    ports:
+      - "5001:5000"
+    stdin_open: true # für pdb
+    tty: true # für pdb
+    volumes:
+      - .:/app
+    environment:
+      FLASK_APP: app
+      FLASK_ENV: development
