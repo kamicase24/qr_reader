@@ -62,6 +62,7 @@ domReady(function () {
     }).then(data => {
       console.log("Datos enviados al servidor")
       console.log(data)
+      alert(`Stock actualizado ${data['sku']}: ${data['qty']}`)
     }).catch(error => {
       console.log('Hubo un problema en la lectura del QR')
     })
@@ -77,3 +78,5 @@ domReady(function () {
   );
   htmlscanner.render(onScanSuccess);
 });
+
+
