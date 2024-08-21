@@ -77,8 +77,8 @@ def send_to_shopify(data:dict):
     locations = shopify.Location.find()
     location_id = locations[0].id
     
-    # product_title = data['sku']
-    product_title = 'DEV PRODUCT 7'
+    product_title = data['sku']
+    # product_title = 'DEV PRODUCT 7'
     lot_number = data['lot_number']
     
     products = shopify.Product.find(title=product_title)
