@@ -62,7 +62,15 @@ domReady(function () {
     }).then(data => {
       console.log("Datos enviados al servidor")
       console.log(data)
-      alert(`Stock actualizado ${data['sku']}: ${data['qty']}`)
+      if(data['success']){
+        alert(`Stock actualizado
+          Producto (SKU): ${data['info']['sku']}
+          # Lote: ${data['info']['lot_number']}
+          Ajuste: ${adjust_qty}`)
+      } else {
+        alert(`${data['result']['error']}`)
+      }
+
     }).catch(error => {
       console.log('Hubo un problema en la lectura del QR')
     })
