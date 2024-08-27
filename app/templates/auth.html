@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+
+{% block title %}
+    QR Reader
+{% endblock %}
+
+{% block content %}
+
+<div class="container">
+    <form method="POST" action="/">
+        <label for="password">Access Password</label>
+        <input type="password" name="password" id="password">
+        <button type="submit" name="access" id="access">Access</button> 
+    </form>
+</div>
+
+{% endblock %}

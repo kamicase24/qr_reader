@@ -10,11 +10,23 @@ SHOPIFY_API_TOKEN = os.getenv('SHOPIFY_API_TOKEN', False)
 SHOPIFY_API_KEY = os.getenv('SHOPIFY_API_KEY', False)
 SHOPIFY_API_SECRET = os.getenv('SHOPIFY_API_SECRET', False)
 SHOPIFY_SHOP_NAME = os.getenv('SHOPIFY_SHOP_NAME', False)
+PASSWORD = os.getenv('PASSWORD', False)
 
 
-@bp.route('/')
+@bp.route('/', methods=['POST', 'GET'])
 def index():
-    return render_template('index.html')
+    if request.method == 'POST':
+        password = request.form.to_dict().get('password', False)
+        if password:
+            if password == PASSWORD:
+                return render_template('index.html')
+    return render_template('auth.html')
+
+@bp.route('/auth', methods=['POST', 'GET'])
+def auth():
+    if request.method == 'POST':
+        import ipdb; ipdb.set_trace()
+    return render_template('auth.html')
 
 
 @bp.route('/read_qr_result', methods=['POST'])
@@ -84,6 +96,8 @@ def send_to_shopify(data:dict):
     products = shopify.Product.find(title=product_title)
     if len(products) > 0:
         product = products[0]
+        product_image = product.images[0].src if product.images else None
+
         # Buscar variante por número de lote
         variant = next((v for v in product.variants if v.sku == lot_number), None)
 
@@ -101,10 +115,16 @@ def send_to_shopify(data:dict):
             is_variant_saved = new_variant.save()
             if is_variant_saved:
                 inventory_item_id = new_variant.inventory_item_id
+                if product_image:
+                    shopify.Image.create({
+                        "variant_ids": [new_variant.id],
+                        "src": product_image
+                    })
             else:
-                return {'error': f'Error al actualizar el stock del producto {product_title}[{lot_number}]. {new_variant.errors.full_messages()}'}, False
+                return {'error': f'Error updating the stock for product {product_title}[{lot_number}]. {new_variant.errors.full_messages()}'}, False
         else:
-            return {'error': f'Lote {lot_number}, previamente escaneado'}, False
+            # return {'error': f'Lot {lot_number} was previously scanned'}, False
+            inventory_item_id = variant.inventory_item_id
     else:
         product = shopify.Product()
         product.title = product_title
@@ -112,7 +132,7 @@ def send_to_shopify(data:dict):
         product.variants = [shopify.Variant(
             {
                 "sku": lot_number,
-                "title": f'{product_title}-{lot_number}',
+                "title": f'{product_title} - {lot_number}',
                 "option1": lot_number,
                 "inventory_management": "shopify"
             }
@@ -122,7 +142,7 @@ def send_to_shopify(data:dict):
         if is_product_saved:
             inventory_item_id = product.variants[0].inventory_item_id
         else:
-            return {'error': f'Error al crear el producto: {product_title}[{lot_number}]. {product.errors.full_messages()}'}, False
+            return {'error': f'Error creating the product: {product_title}[{lot_number}]. {product.errors.full_messages()}'}, False
 
     inventory_level = shopify.InventoryLevel.adjust(
         location_id=location_id,
@@ -136,7 +156,10 @@ def send_to_shopify(data:dict):
     for variant in product.variants:
         variant_inventory_item_id = variant.inventory_item_id
         variant_inventory_level = shopify.InventoryLevel.find(inventory_item_ids=variant_inventory_item_id, location_ids=location_id)
-        total_stock += variant_inventory_level[0].available if variant_inventory_level else 0
+        try:
+            total_stock += variant_inventory_level[0].available if variant_inventory_level else 0
+        except:
+            total_stock = 0
     inv_level_dict.update({'total_product_stock': total_stock})
     
     shopify.ShopifyResource.clear_session()

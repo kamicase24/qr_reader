@@ -24,7 +24,7 @@ domReady(function () {
 
   // If found you qr code
   function onScanSuccess(decodeText, decodeResult) {
-    console.log("QR Leido : " + decodeText, decodeResult);
+    console.log("QR Code Readed: " + decodeText, decodeResult);
     var data = {
       decodeResult: decodeResult,
       decodeText: decodeText
@@ -32,17 +32,17 @@ domReady(function () {
 
     // Stop scanning
     htmlscanner.clear().then(() => {
-      console.log("Escaneo detenido temporalmente");
+      console.log("Scanning temporarily stopped");
       showMessage();
 
       // Reanudar el escaneo después de 3 segundos
       setTimeout(() => {
         hideMessage();
         htmlscanner.render(onScanSuccess);
-        console.log("Escaneo reanudado");
+        console.log("Scanning resumed");
       }, 3000);
     }).catch(error => {
-      console.error("Error deteniendo el escaneo", error);
+      console.error("Error, stopping scanning", error);
     });
 
     fetch(
@@ -56,23 +56,23 @@ domReady(function () {
       }
     ).then(response => {
       if (!response.ok) {
-        throw new Error('Error al enviar el QR')
+        throw new Error('Error sending the QR')
       }
       return response.json();
     }).then(data => {
-      console.log("Datos enviados al servidor")
+      console.log("Data sent to server")
       console.log(data)
       if(data['success']){
-        alert(`Stock actualizado
-          Producto (SKU): ${data['info']['sku']}
-          # Lote: ${data['info']['lot_number']}
-          Ajuste: ${adjust_qty}`)
+        alert(`Stock updated
+          Product (SKU): ${data['info']['sku']}
+          Lot #: ${data['info']['lot_number']}
+          Qty Updated: ${data['info']['available']}`)
       } else {
         alert(`${data['result']['error']}`)
       }
 
     }).catch(error => {
-      console.log('Hubo un problema en la lectura del QR')
+      console.log(`There was a problem reading the QR code ${error}`)
     })
   }
 
@@ -86,5 +86,3 @@ domReady(function () {
   );
   htmlscanner.render(onScanSuccess);
 });
-
-
