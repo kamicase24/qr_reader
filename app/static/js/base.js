@@ -66,7 +66,7 @@ domReady(function () {
         alert(`Stock updated
           Product (SKU): ${data['info']['sku']}
           Lot #: ${data['info']['lot_number']}
-          Qty Updated: ${data['info']['available']}`)
+          Qty Updated: ${data['info']['qty']}`)
       } else {
         alert(`${data['result']['error']}`)
       }

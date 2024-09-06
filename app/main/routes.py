@@ -1,3 +1,4 @@
+from datetime import datetime
 from flask import render_template, request
 from app.main import bp
 import shopify
@@ -5,6 +6,20 @@ from dotenv import load_dotenv
 import os
 load_dotenv('.env')
 
+MONTH_ALPHABET = {
+    'A': ['Enero', '01'],
+    'B': ['Febrero', '02'],
+    'C': ['Marzo', '03'],
+    'D': ['Abril', '04'],
+    'E': ['Mayo', '05'],
+    'F': ['Junio', '06'],
+    'G': ['Julio', '07'],
+    'H': ['Agosto', '08'],
+    'I': ['Septiembre', '09'],
+    'J': ['Octubre', '10'],
+    'K': ['Noviembre', '11'],
+    'L': ['Diciembre', '12']
+}
 
 SHOPIFY_API_TOKEN = os.getenv('SHOPIFY_API_TOKEN', False)
 SHOPIFY_API_KEY = os.getenv('SHOPIFY_API_KEY', False)
@@ -25,8 +40,7 @@ def index():
 @bp.route('/auth', methods=['POST', 'GET'])
 def auth():
     if request.method == 'POST':
-        import ipdb; ipdb.set_trace()
-    return render_template('auth.html')
+        return render_template('auth.html')
 
 
 @bp.route('/read_qr_result', methods=['POST'])
@@ -73,6 +87,16 @@ def process_qr_data(data:dict):
     }
     data_dict = {key_mapping[key]: value for key, value in raw_data_dict.items()}
     data_dict['qty'] = float(data_dict['qty'])
+    # U-B-2-4-193F1
+    # 0-1-2-3-4....
+    qr_name = data_dict['name']
+    month = MONTH_ALPHABET.get(qr_name[1], False)
+    if month:
+        if not data_dict.get('date', False):
+            year = qr_name[2:4]
+            lot_date = datetime.strptime(f'{year}/{month[1]}', '%y/%m')
+            lot_str_date = lot_date.strftime('%Y/%m')
+            data_dict.update({'date': lot_str_date})
 
     print(f"data_dict {data_dict}")
     return data_dict
@@ -80,89 +104,126 @@ def process_qr_data(data:dict):
 
 
 
-def send_to_shopify(data:dict):
-    shopify_url = f'https://{SHOPIFY_API_KEY}:{SHOPIFY_API_TOKEN}@{SHOPIFY_SHOP_NAME}.myshopify.com/admin'
+
+def send_to_shopify(data: dict):
+    shopify_url = f'https://{SHOPIFY_API_KEY}:{SHOPIFY_API_TOKEN}@{SHOPIFY_SHOP_NAME}.myshopify.com/admin/api/2023-07'
     shopify.ShopifyResource.set_site(shopify_url)
     
-    shop = shopify.Shop.current()
+    try:
+        shop = shopify.Shop.current()
+        locations = shopify.Location.find()
+        location_id = locations[0].id
 
-    locations = shopify.Location.find()
-    location_id = locations[0].id
-    
-    product_title = data['sku']
-    # product_title = 'DEV PRODUCT 7'
-    lot_number = data['lot_number']
-    
-    products = shopify.Product.find(title=product_title)
-    if len(products) > 0:
-        product = products[0]
-        product_image = product.images[0].src if product.images else None
+        product_title = data['sku']
+        lot_number = data['lot_number']+'XX1'
+        lot_date = data['date']
+        qty = int(data['qty'])
 
-        # Buscar variante por número de lote
-        variant = next((v for v in product.variants if v.sku == lot_number), None)
+        products = shopify.Product.find(title=product_title)
+        if products:
+            product = products[0]
+            product_image = product.images[0].src if product.images else None
 
-        if not variant:
-            # Si no existe la variante, crearla
-            new_variant = shopify.Variant(
-                {
+            # Buscar variante por SKU
+            variant = next((v for v in product.variants if v.sku == lot_number), None)
+
+            if not variant:
+                # Crear nueva variante
+                new_variant = shopify.Variant({
                     "product_id": product.id,
                     "title": f'{product_title}-{lot_number}',
                     "option1": lot_number,
                     "sku": lot_number,
                     "inventory_management": "shopify"
-                }
-            )
-            is_variant_saved = new_variant.save()
-            if is_variant_saved:
-                inventory_item_id = new_variant.inventory_item_id
+                })
+                new_variant.save()
+                
+                if new_variant.errors:
+                    return {'error': f'Error creating variant: {new_variant.errors.full_messages()}'}, False
+                
+                # Asociar imagen si existe
                 if product_image:
                     shopify.Image.create({
-                        "variant_ids": [new_variant.id],
+                        "product_id": product.id,
                         "src": product_image
                     })
+
+                inventory_item_id = new_variant.inventory_item_id
+                variant = new_variant
             else:
-                return {'error': f'Error updating the stock for product {product_title}[{lot_number}]. {new_variant.errors.full_messages()}'}, False
+                inventory_item_id = variant.inventory_item_id
+
+            # Agregar o actualizar metafield en la variante
+            metafield = shopify.Metafield({
+                "namespace": "custom",
+                "key": "custom_date",
+                "value": lot_date,
+                "value_type": "string",
+                "owner_resource": "variant",
+                "owner_id": variant.id
+            })
+            metafield.save()
+
+            if metafield.errors:
+                return {'error': f'Error creating metafield: {metafield.errors.full_messages()}'}, False
+
         else:
-            # return {'error': f'Lot {lot_number} was previously scanned'}, False
-            inventory_item_id = variant.inventory_item_id
-    else:
-        product = shopify.Product()
-        product.title = product_title
-        product.body_html = f"<h1>{product_title}</h1>"
-        product.variants = [shopify.Variant(
-            {
-                "sku": lot_number,
-                "title": f'{product_title} - {lot_number}',
-                "option1": lot_number,
-                "inventory_management": "shopify"
-            }
-        )]
-        is_product_saved = product.save()
-        
-        if is_product_saved:
+            # Crear nuevo producto
+            product = shopify.Product({
+                "title": product_title,
+                "body_html": f"<h1>{product_title}</h1>",
+                "variants": [shopify.Variant({
+                    "sku": lot_number,
+                    "title": f'{product_title}-{lot_number}',
+                    "option1": lot_number,
+                    "inventory_management": "shopify"
+                })]
+            })
+            product.save()
+            
+            if product.errors:
+                return {'error': f'Error creating product: {product.errors.full_messages()}'}, False
+
+            # Agregar metafield a la primera variante del nuevo producto
+            metafield = shopify.Metafield({
+                "namespace": "custom",
+                "key": "custom_date",
+                "value": lot_date,
+                "value_type": "string",
+                "owner_resource": "variant",
+                "owner_id": product.variants[0].id
+            })
+            metafield.save()
+
+            if metafield.errors:
+                return {'error': f'Error creating metafield: {metafield.errors.full_messages()}'}, False
+
             inventory_item_id = product.variants[0].inventory_item_id
-        else:
-            return {'error': f'Error creating the product: {product_title}[{lot_number}]. {product.errors.full_messages()}'}, False
 
-    inventory_level = shopify.InventoryLevel.adjust(
-        location_id=location_id,
-        inventory_item_id=inventory_item_id,
-        available_adjustment=int(data['qty'])
-    )
-    inv_level_dict = inventory_level.to_dict()
-    
+        # Ajustar el nivel de inventario
+        inventory_level = shopify.InventoryLevel.adjust(
+            location_id=location_id,
+            inventory_item_id=inventory_item_id,
+            available_adjustment=qty
+        )
+        
+        if inventory_level.errors:
+            return {'error': f'Error adjusting inventory: {inventory_level.errors.full_messages()}'}, False
 
-    total_stock = 0
-    for variant in product.variants:
-        variant_inventory_item_id = variant.inventory_item_id
-        variant_inventory_level = shopify.InventoryLevel.find(inventory_item_ids=variant_inventory_item_id, location_ids=location_id)
-        try:
-            total_stock += variant_inventory_level[0].available if variant_inventory_level else 0
-        except:
-            total_stock = 0
-    inv_level_dict.update({'total_product_stock': total_stock})
-    
-    shopify.ShopifyResource.clear_session()
-    return inv_level_dict, True
+        # Obtener el stock total
+        total_stock = 0
+        for variant in product.variants:
+            variant_inventory_item_id = variant.inventory_item_id
+            variant_inventory_levels = shopify.InventoryLevel.find(inventory_item_ids=variant_inventory_item_id, location_ids=location_id)
+            total_stock += sum(v.available for v in variant_inventory_levels) if variant_inventory_levels else 0
 
+        inv_level_dict = inventory_level.to_dict()
+        inv_level_dict.update({'total_product_stock': total_stock})
 
+        return inv_level_dict, True
+
+    except Exception as e:
+        return {'error': str(e)}, False
+
+    finally:
+        shopify.ShopifyResource.clear_session()
