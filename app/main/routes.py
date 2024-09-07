@@ -115,7 +115,7 @@ def send_to_shopify(data: dict):
         location_id = locations[0].id
 
         product_title = data['sku']
-        lot_number = data['lot_number']+'XX1'
+        lot_number = data['lot_number']
         lot_date = data['date']
         qty = int(data['qty'])
 
@@ -156,7 +156,7 @@ def send_to_shopify(data: dict):
             # Agregar o actualizar metafield en la variante
             metafield = shopify.Metafield({
                 "namespace": "custom",
-                "key": "custom_date",
+                "key": "elaborarion_date",
                 "value": lot_date,
                 "value_type": "string",
                 "owner_resource": "variant",
@@ -187,7 +187,7 @@ def send_to_shopify(data: dict):
             # Agregar metafield a la primera variante del nuevo producto
             metafield = shopify.Metafield({
                 "namespace": "custom",
-                "key": "custom_date",
+                "key": "elaborarion_date",
                 "value": lot_date,
                 "value_type": "string",
                 "owner_resource": "variant",
